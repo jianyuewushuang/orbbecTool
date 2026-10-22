@@ -173,7 +173,13 @@ cd ~/documents/code/projects/orbbecTool
 # 固定曝光录制
 ./orbbec_recorder fixed.bag 60 --color-exposure 100
 
-# 查看可用配置
+# 分别指定输出目录、日志目录和 SDK 配置文件
+./orbbec_recorder run.bag 60 --out-dir ~/camera_records --log-dir ~/camera_logs --config ./OrbbecSDKConfig_v1.0.xml
+
+# 不指定文件名时按时间戳命名，并写入指定目录
+./orbbec_recorder --out-dir ~/camera_records --log-dir ~/camera_logs
+
+# 查看可用配置（同样支持自定义目录）
 ./orbbec_recorder --list
 ```
 

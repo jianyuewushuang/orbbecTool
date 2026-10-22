@@ -10,6 +10,11 @@
 //   --depth 640x400x30         深度流配置
 //   --ir    640x400x30         红外流配置
 //
+// 目录/配置 (均可独立指定):
+//   --out-dir DIR              输出 bag 的目录 (默认: 当前目录)
+//   --log-dir DIR              SDK 日志目录 (默认: ./Log)
+//   --config FILE              SDK 配置文件路径 (默认: ./OrbbecSDKConfig_v1.0.xml)
+//
 // 曝光控制 (快门速度, 设置后自动关闭对应自动曝光):
 //   --color-exposure 1000      彩色曝光值
 //   --depth-exposure 3000      深度曝光值
@@ -31,6 +36,7 @@
 // Ctrl+C 可随时停止, 文件会正常保存
 
 #include "libobsensor/hpp/Pipeline.hpp"
+#include "libobsensor/hpp/Context.hpp"
 #include "libobsensor/hpp/StreamProfile.hpp"
 #include "libobsensor/hpp/Error.hpp"
 #include "libobsensor/hpp/Frame.hpp"
@@ -39,11 +45,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cerrno>
 #include <csignal>
 #include <chrono>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 static volatile sig_atomic_t g_running = 1;
 static void onSignal(int) { g_running = 0; }
@@ -54,6 +64,72 @@ static std::string timestampName() {
     char buf[64];
     strftime(buf, sizeof(buf), "orbbec_%Y%m%d_%H%M%S.bag", localtime(&t));
     return buf;
+}
+
+// ---------- 目录工具 ----------
+// 支持 "~" / "~/xxx" 形式, 便于直接传入用户目录
+static std::string expandHome(const std::string &path) {
+    if(path == "~" || path.compare(0, 2, "~/") == 0) {
+        const char *home = getenv("HOME");
+        if(home && *home) return std::string(home) + path.substr(1);
+    }
+    return path;
+}
+
+static bool isDir(const std::string &path) {
+    struct stat st;
+    return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+// 递归创建目录, 等价于 mkdir -p
+static bool makeDirs(const std::string &path) {
+    if(path.empty()) return true;
+    std::string p = path;
+    while(p.size() > 1 && p[p.size() - 1] == '/') p.pop_back();
+    if(isDir(p)) return true;
+    size_t pos = p.rfind('/');
+    if(pos != std::string::npos && pos > 0) {
+        if(!makeDirs(p.substr(0, pos))) return false;
+    }
+    if(mkdir(p.c_str(), 0755) == 0 || errno == EEXIST) return isDir(p);
+    return false;
+}
+
+// 相对输出名拼接到输出目录; 绝对路径保持原样
+static std::string joinPath(const std::string &dir, const std::string &name) {
+    if(dir.empty() || name.empty() || name[0] == '/') return name;
+    if(dir[dir.size() - 1] == '/') return dir + name;
+    return dir + "/" + name;
+}
+
+// ---------- SDK 会话 ----------
+struct SdkSession {
+    std::shared_ptr<ob::Context>  ctx;
+    std::shared_ptr<ob::Device>   dev;
+    std::unique_ptr<ob::Pipeline> pipe;
+};
+
+// 未指定 configPath 时保持 SDK 默认行为 (从当前目录读取 OrbbecSDKConfig_v1.0.xml)
+static SdkSession openSdk(const std::string &configPath, const std::string &logDir) {
+    SdkSession s;
+
+    // 先设置一次以捕获 Context 创建前的日志
+    if(!logDir.empty()) ob::Context::setLoggerToFile(OB_LOG_SEVERITY_DEBUG, logDir.c_str());
+
+    if(!configPath.empty()) s.ctx = std::make_shared<ob::Context>(configPath.c_str());
+
+    // 配置文件中的 OutputDir 可能重置日志目录, 因此 Context 创建后再设置一次
+    if(!logDir.empty() && s.ctx) ob::Context::setLoggerToFile(OB_LOG_SEVERITY_DEBUG, logDir.c_str());
+
+    if(s.ctx) {
+        auto list = s.ctx->queryDeviceList();
+        if(!list || list->deviceCount() == 0) throw std::runtime_error("未发现相机设备");
+        s.dev = list->getDevice(0);
+        s.pipe.reset(new ob::Pipeline(s.dev));
+    } else {
+        s.pipe.reset(new ob::Pipeline());
+    }
+    return s;
 }
 
 static const char *formatName(OBFormat f) {
@@ -239,9 +315,13 @@ static void usage() {
         "  --color/--depth/--ir WxHxFPS   各路流的分辨率和帧率 (如 1920x1080x30)\n"
         "  --color-exposure/--depth-exposure/--ir-exposure N   曝光 (自动关自动曝光)\n"
         "  --color-gain/--depth-gain/--ir-gain N               增益\n"
+        "  --out-dir DIR             输出 bag 目录 (默认当前目录, 自动创建)\n"
+        "  --log-dir DIR             SDK 日志目录 (默认 ./Log, 自动创建)\n"
+        "  --config FILE             SDK 配置文件路径 (默认 ./OrbbecSDKConfig_v1.0.xml)\n"
         "  --props   查询各路曝光/增益当前值和范围\n"
         "  --list    列出所有流配置\n"
-        "示例: ./orbbec_recorder out.bag 60 --streams color,depth --depth-exposure 5000\n");
+        "示例: ./orbbec_recorder out.bag 60 --streams color,depth --depth-exposure 5000\n"
+        "      ./orbbec_recorder out.bag 60 --out-dir ~/records --log-dir ~/logs\n");
 }
 
 int main(int argc, char **argv) {
@@ -254,8 +334,10 @@ int main(int argc, char **argv) {
     specs[2].enabled = false; specs[2].w = 640; specs[2].h = 400; specs[2].fps = 30;
 
     std::string outFile;
+    std::string outDir, logDir, configPath;
     int         seconds = 60;
     bool        outSet = false, secSet = false;
+    bool        wantList = false, wantProps = false;
 
     for(int i = 1; i < argc; i++) {
         char *a = argv[i];
@@ -281,13 +363,20 @@ int main(int argc, char **argv) {
 
         // 无值选项
         if(!strcmp(name, "help") || !strcmp(name, "h")) { usage(); return 0; }
-        if(!strcmp(name, "list") || !strcmp(name, "props")) {
-            try {
-                ob::Pipeline pipe;
-                if(!strcmp(name, "list")) { listProfiles(pipe); return 0; }
-                printProps(pipe.getDevice());
-            } catch(ob::Error &e) { fprintf(stderr, "[错误] %s\n", e.getMessage()); }
-            return 0;
+        if(!strcmp(name, "list")) { wantList = true; continue; }
+        if(!strcmp(name, "props")) { wantProps = true; continue; }
+
+        // 目录 / 配置文件选项 (可分别独立指定)
+        if(!strcmp(name, "out-dir") || !strcmp(name, "log-dir") || !strcmp(name, "config")) {
+            char *v = needVal();
+            if(!v || !*v) {
+                fprintf(stderr, "[错误] --%s 需要一个路径\n", name);
+                return 1;
+            }
+            if(!strcmp(name, "out-dir")) outDir = v;
+            else if(!strcmp(name, "log-dir")) logDir = v;
+            else configPath = v;
+            continue;
         }
 
         // --color/--depth/--ir WxHxFPS
@@ -362,12 +451,43 @@ int main(int argc, char **argv) {
         }
     }
 
-    if(!outSet) outFile = timestampName();
-    if(seconds <= 0) { fprintf(stderr, "[错误] 时长必须为正数\n"); return 1; }
+    // 目录参数预处理
+    outDir     = expandHome(outDir);
+    logDir     = expandHome(logDir);
+    configPath = expandHome(configPath);
+
+    if(!logDir.empty() && !makeDirs(logDir)) {
+        fprintf(stderr, "[错误] 无法创建日志目录 '%s'\n", logDir.c_str());
+        return 1;
+    }
+    if(!configPath.empty()) {
+        struct stat st;
+        if(stat(configPath.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) {
+            fprintf(stderr, "[错误] SDK 配置文件不存在: '%s'\n", configPath.c_str());
+            return 1;
+        }
+    }
 
     try {
+        // --list / --props 也要能使用自定义配置和日志目录
+        if(wantList || wantProps) {
+            SdkSession sdk = openSdk(configPath, logDir);
+            if(wantList) listProfiles(*sdk.pipe);
+            else printProps(sdk.pipe->getDevice());
+            return 0;
+        }
+
+        if(!outDir.empty() && !makeDirs(outDir)) {
+            fprintf(stderr, "[错误] 无法创建输出目录 '%s'\n", outDir.c_str());
+            return 1;
+        }
+        if(!outSet) outFile = timestampName();
+        if(!outDir.empty()) outFile = joinPath(outDir, outFile);
+        if(seconds <= 0) { fprintf(stderr, "[错误] 时长必须为正数\n"); return 1; }
+
         printf("[初始化] 打开相机...\n");
-        ob::Pipeline pipe;
+        SdkSession sdk = openSdk(configPath, logDir);
+        ob::Pipeline &pipe = *sdk.pipe;
 
         std::shared_ptr<ob::VideoStreamProfile> profiles[NSTREAMS];
         for(int s = 0; s < NSTREAMS; s++) {

@@ -32,6 +32,8 @@
 | Orbbec SDK（项目内置） | `./sdk`（头文件 + 运行库） |
 | OrbbecViewer（可选） | `$VIEWER_DIR`，默认 `../OrbbecViewer_v1.10.37_202607070725_linux_x64_release` |
 
+> 表中的 `.`、`./sdk` 均相对项目根目录。`/etc/udev/...`、`/dev/video*` 等系统路径和 `/cam0/...` topic 名称不是项目文件路径，保持原样。
+
 ### 1.2 测试环境
 
 | 项目 | 状态 |
@@ -71,10 +73,6 @@ orbbecTool/
 
 `sdk/` 内已包含编译所需头文件和运行时动态库，二进制通过 `$ORIGIN/../sdk/lib` 相对路径加载，因此无需安装或下载官方 SDK，整个项目目录也可随意移动。
 
-> `.venv/` 属于本地 Python 环境，默认不纳入 git。录制器不依赖 Python，克隆后即可使用；新机器若要运行 `bag_extract.py`，需自行创建 Python 3.11 venv 并安装 `rosbags`、`opencv-python-headless`、`numpy`。
->
-> `sdk/lib/libdepthengine.so.2.0` 依赖系统库 `libEGL.so.1`；精简系统若提示缺失，安装 `libegl1` 即可。
-
 ### 1.4 相机访问权限
 
 首次使用若提示 `OB_USB_STATUS_ACCESS`，在项目根目录安装 udev 规则后重新插拔相机：
@@ -84,6 +82,73 @@ sudo ./scripts/install_udev_rules.sh
 ```
 
 `scripts/99-obsensor-libusb.rules` 已随项目提供，脚本会自动复制到 `/etc/udev/rules.d/`。
+
+### 1.5 依赖清单
+
+#### 1.5.1 运行录制器（必需）
+
+| 类别 | 依赖 | 说明 |
+| --- | --- | --- |
+| 相机 | Orbbec Gemini Max | 其他型号未测试 |
+| 系统 | Linux x86_64 | 内置动态库为 x86-64 架构；ARM 需替换对应架构的 SDK |
+| USB | USB 3.0 端口与线缆 | 推荐；USB 2.0 可运行，但高分辨率深度帧率受限 |
+| C/C++ 运行库 | `libstdc++.so.6`、`libgcc_s.so.1`、`libc.so.6`、`libm.so.6`、`libpthread.so.0`、`libdl.so.2`、`ld-linux-x86-64.so.2` | glibc 系统基础库，Ubuntu / Debian 通常预装 |
+| 图形库 | `libEGL.so.1` | 深度引擎 `libdepthengine.so.2.0` 依赖；缺失时安装 `sudo apt install libegl1` |
+| 设备权限 | udev（`udevadm`） | 运行 `sudo ./scripts/install_udev_rules.sh` 后重新插拔相机；需要 root / sudo |
+| SDK 运行库 | `sdk/lib/libOrbbecSDK.so.1.10.37`、`libob_usb.so`、`liblive555.so`、`libdepthengine.so.2.0` | 已内置，无需下载官方 SDK |
+| SDK 配置 | `config/OrbbecSDKConfig_v1.0.xml` | 已内置；运行时自动查找，也可用 `--config` 指定其他文件 |
+
+> `libOrbbecSDK` 的 `NEEDED` 还包含 `libpthread`、`libdl`、`libstdc++`、`libm`、`libgcc_s`、`libc`，均来自系统基础库。
+
+#### 1.5.2 编译录制器（仅在需要重新编译时）
+
+| 依赖 | 版本 / 说明 |
+| --- | --- |
+| `g++` | 支持 C++11；测试版本 15.2.0 |
+| GNU binutils（`ld`） | 用于 `-Wl,-rpath` 链接 |
+| SDK 头文件 | `sdk/include/libobsensor/`（已内置） |
+| SDK 动态库 | `sdk/lib/`（已内置） |
+
+编译命令见 [7.1 编译录制器](#71-编译录制器)。
+
+#### 1.5.3 解析 bag（Python，可选）
+
+运行 `scripts/bag_extract.py` 需要 Python 3.11 及以下包：
+
+| 依赖 | 版本 | 用途 |
+| --- | --- | --- |
+| Python + venv | 3.11（测试 3.11.17） | 解释器与 venv 模块；Ubuntu 可安装 `python3.11-venv`，也可用 uv 管理 |
+| `rosbags` | 0.11.8 | 读取 ROSBAG V2.0 |
+| `numpy` | 2.4.6 | 图像数组处理 |
+| `opencv-python-headless` | 5.0.0.93 | JPEG 解码与 mp4 写入 |
+| `apsw` | 3.54.1.0 | rosbags 的 SQLite 索引（随 rosbags 安装） |
+| `lz4` | 4.4.5 | rosbags 压缩消息（随 rosbags 安装） |
+| `backports.zstd` | 1.8.0 | rosbags 压缩消息（随 rosbags 安装） |
+| `ruamel.yaml` | 0.19.1 | rosbags 元数据解析（随 rosbags 安装） |
+| `typing_extensions` | 4.16.0 | rosbags 类型标注（随 rosbags 安装） |
+
+重建 venv 示例：
+
+```bash
+python3.11 -m venv .venv
+./.venv/bin/pip install "rosbags==0.11.8" "opencv-python-headless==5.0.0.93" "numpy==2.4.6"
+```
+
+- 安装 `rosbags` 时会自动拉取 `apsw`、`lz4`、`backports.zstd`、`ruamel.yaml`、`typing_extensions`。
+- 脚本只做解码和写文件，不需要 GUI，因此使用 `opencv-python-headless` 即可。
+- `.venv/` 不纳入 git，新机器需按上面的命令自行创建；也可用 `uv venv --python 3.11 .venv` 创建。
+
+#### 1.5.4 可选工具
+
+| 工具 | 用途 | 安装 / 说明 |
+| --- | --- | --- |
+| OrbbecViewer v1.10.37 | 实时预览、bag 回放 | 官方发布包；需要图形桌面（X11 / Wayland）与 OpenGL / EGL |
+| `ffmpeg` / `ffprobe` | 视频抽帧、验证导出的 mp4 | `sudo apt install ffmpeg` |
+| `cron` | 定时 / 自动录制 | `sudo apt install cron` |
+| `usbutils`（`lsusb`） | 查看 USB 协商速率 | `sudo apt install usbutils` |
+| `procps`（`pkill`） | cron 示例中关闭 OrbbecViewer | `sudo apt install procps` |
+| `git` | 拉取仓库 | `sudo apt install git` |
+| `uv` | 快速创建 / 重建 venv | 可选，非必需 |
 
 ---
 
@@ -436,10 +501,11 @@ with Reader('out.bag') as r:
 
 ## 6. 回放
 
-用 OrbbecViewer 打开录制的 bag：
+用 OrbbecViewer 打开录制的 bag（按[第 3 节](#3-查看实时画面)设置 `VIEWER_DIR`）：
 
 ```bash
-cd ~/documents/机器人队/相机/OrbbecViewer_v1.10.37_202607070725_linux_x64_release
+VIEWER_DIR="${VIEWER_DIR:-../OrbbecViewer_v1.10.37_202607070725_linux_x64_release}"
+cd "$VIEWER_DIR"
 LD_LIBRARY_PATH=. ./OrbbecViewer
 # File -> Open File -> 选择 .bag
 ```
@@ -450,20 +516,20 @@ LD_LIBRARY_PATH=. ./OrbbecViewer
 
 ### 7.1 编译录制器
 
-`orbbec_recorder.cpp` 可直接作为模板：
+`src/orbbec_recorder.cpp` 可直接作为模板。在项目根目录编译：
 
 ```bash
-cd ~/documents/code/projects/orbbecTool
 SDK=./sdk
 
-g++ -std=c++11 -O2 orbbec_recorder.cpp \
+g++ -std=c++11 -O2 src/orbbec_recorder.cpp \
     -I "$SDK/include" -L "$SDK/lib" -lOrbbecSDK -lpthread \
-    -o orbbec_recorder -Wl,-rpath,'$ORIGIN/sdk/lib'
+    -o bin/orbbec_recorder -Wl,-rpath,'$ORIGIN/../sdk/lib'
 ```
 
 - SDK 头文件和动态库已内置在 `./sdk`，无需另行下载。
 - `$ORIGIN` 必须放在单引号中，确保写入的是相对路径；这样整个项目目录可以任意移动或被克隆到其他机器。
-- 预编译的 `orbbec_recorder` 已使用 `$ORIGIN/sdk/lib`，克隆后可直接运行。
+- 预编译的 `bin/orbbec_recorder` 已使用 `$ORIGIN/../sdk/lib`，克隆后可直接运行。
+- 程序默认从 `bin/../config/OrbbecSDKConfig_v1.0.xml` 读取配置；移动二进制时请一并保留 `config/` 和 `sdk/`。
 - 如替换 SDK 版本，保持 `sdk/include/libobsensor/` 和 `sdk/lib/` 目录结构即可。
 
 ### 7.2 关键 API
@@ -503,7 +569,7 @@ dev->setIntProperty(OB_PROP_COLOR_GAIN_INT, 16);
 | 现象 | 原因 | 解决 |
 | --- | --- | --- |
 | OrbbecViewer 报 `file too short` | 发布包符号链接被拷贝破坏（`.so` 变成文本文件） | 将小于 1KB 的 `.so` 按内容重建为软链接，或重新解压官方 zip |
-| 报 `OB_USB_STATUS_ACCESS` | 缺少 udev 规则 | 运行 `script/install_udev_rules.sh` 后重新插拔相机 |
+| 报 `OB_USB_STATUS_ACCESS` | 缺少 udev 规则 | 运行 `sudo ./scripts/install_udev_rules.sh` 后重新插拔相机 |
 | 录制时提示打不开相机 | OrbbecViewer 正占用相机 | 先 `pkill -x OrbbecViewer` 再录制 |
 | `/dev/video*` 没有相机节点 | uvcvideo 驱动被 detach 后未重绑 | 物理重新插拔相机（只影响 V4L2，SDK 录制不受影响） |
 | 帧率上不去 / `fps too low` | USB 2.0 带宽打满 | 降低分辨率或帧率，或换 USB 3.0 端口和线缆 |

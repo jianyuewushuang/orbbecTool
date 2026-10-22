@@ -463,3 +463,13 @@ SDK 自带大量示例：`sdk/OrbbecSDK_v1.10.37/Example/cpp/`（Sample-Recorder
 | 彩色帧率突然变很低 | 曝光时间设得超过帧周期（30fps 上限约 333） | 减小曝光值，或降低目标帧率 |
 | 重启后曝光不是自动了 | 曝光值保存在相机端 | 不传曝光参数启动，或在 OrbbecViewer 里打开 Auto Exposure |
 | 录制的画面时间戳偏了约 1.5 小时 | 相机内部时钟未同步（该型号不支持时间同步属性） | 以 bag 的消息时间为准，或录制前后记录本机时间做对齐 |
+
+## License
+
+This project is licensed under the **PolyForm Noncommercial License 1.0.0**.
+
+- Free for personal study, hobby, academic research, non-profit & government organizations.
+- **Commercial use, corporate internal production deployment, paid SaaS, commercial bundling are strictly prohibited.**
+- If you need commercial licensing, contact: <jianyuewushuang@163.com>.
+
+See the full legal terms in [LICENSE.md](./LICENSE.md).

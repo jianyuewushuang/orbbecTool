@@ -70,6 +70,8 @@ orbbecTool/
 `sdk/` 内已包含编译所需头文件和运行时动态库，二进制通过 `$ORIGIN/sdk/lib` 相对路径加载，因此无需安装或下载官方 SDK，整个项目目录也可随意移动。
 
 > `bin/`、`lib/`、`pyvenv.cfg` 属于本地 Python venv，默认不纳入 git。录制器不依赖 Python，克隆后即可使用；新机器若要运行 `bag_extract.py`，需自行创建 Python 3.11 venv 并安装 `rosbags`、`opencv-python-headless`、`numpy`。
+>
+> `sdk/lib/libdepthengine.so.2.0` 依赖系统库 `libEGL.so.1`；精简系统若提示缺失，安装 `libegl1` 即可。
 
 ### 1.4 相机访问权限
 

@@ -1,10 +1,5 @@
-# ---- Python 虚拟环境（uv 创建，可用 pyvenv.cfg 重建，勿提交） ----
-/bin/
-/lib/
-/lib64
-/pyvenv.cfg
-/.lock
-/CACHEDIR.TAG
+# ---- Python 虚拟环境（本地 .venv，可用 pyvenv.cfg 重建，勿提交） ----
+/.venv/
 
 # ---- Python 缓存 ----
 __pycache__/

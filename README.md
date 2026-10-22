@@ -24,13 +24,13 @@
 
 ### 1.1 路径约定
 
-本文命令默认使用以下路径，如你的目录不同请自行替换：
+本文命令均在项目根目录执行。OrbbecViewer 是可选工具，示例默认它与项目同级，可按实际位置修改或设置 `VIEWER_DIR` 环境变量。
 
 | 用途 | 路径 |
 | --- | --- |
-| 项目目录 | `~/documents/code/projects/orbbecTool` |
+| 项目目录 | `.` |
 | Orbbec SDK（项目内置） | `./sdk`（头文件 + 运行库） |
-| OrbbecViewer（可选） | `~/documents/机器人队/相机/OrbbecViewer_v1.10.37_202607070725_linux_x64_release` |
+| OrbbecViewer（可选） | `$VIEWER_DIR`，默认 `../OrbbecViewer_v1.10.37_202607070725_linux_x64_release` |
 
 ### 1.2 测试环境
 
@@ -48,57 +48,58 @@
 
 ```text
 orbbecTool/
-├── bin/                          Python venv 可执行文件（python、pip、rosbags-convert 等）
-├── lib/                          venv 依赖（rosbags、opencv-python-headless、numpy、apsw 等）
-├── lib64 -> lib                  venv 标准软链接
-├── pyvenv.cfg                    venv 配置（uv 管理的 CPython 3.11）
-├── sdk/                          Orbbec SDK v1.10.37（项目内置）
-│   ├── include/libobsensor/      头文件
-│   ├── lib/                      动态库（libOrbbecSDK、libob_usb、liblive555 等）
-│   └── LICENSE.txt               SDK 许可证
-├── Log/                          OrbbecSDK 运行日志（自动生成，可删除）
-├── OrbbecSDKConfig_v1.0.xml      SDK 全局配置（运行必需）
-├── orbbec_recorder               已编译的录制器（使用相对 RUNPATH）
-├── orbbec_recorder.cpp           录制器源码
-├── bag_extract.py                bag 解析 / 转 mp4 / 抽帧脚本
-├── install_udev_rules.sh         安装相机 udev 规则（需 sudo）
-├── 99-obsensor-libusb.rules      udev 规则本体
-├── LICENSE.md                    PolyForm Noncommercial 1.0.0
-└── README.md                     本文档
+├── .venv/                          Python 3.11 虚拟环境（本地，不纳入 git）
+├── bin/
+│   └── orbbec_recorder             已编译的录制器（相对 RUNPATH）
+├── config/
+│   └── OrbbecSDKConfig_v1.0.xml    SDK 全局配置（运行必需）
+├── scripts/
+│   ├── bag_extract.py              bag 解析 / 转 mp4 / 抽帧
+│   ├── install_udev_rules.sh       安装相机 udev 规则（需 sudo）
+│   └── 99-obsensor-libusb.rules    udev 规则本体
+├── sdk/                            Orbbec SDK v1.10.37（项目内置）
+│   ├── include/libobsensor/        头文件
+│   ├── lib/                        动态库（libOrbbecSDK、libob_usb、liblive555 等）
+│   └── LICENSE.txt                 SDK 许可证
+├── src/
+│   └── orbbec_recorder.cpp         录制器源码
+├── Log/                            SDK 运行日志（自动生成，可删除）
+├── .gitignore
+├── LICENSE.md
+└── README.md
 ```
 
-`sdk/` 内已包含编译所需头文件和运行时动态库，二进制通过 `$ORIGIN/sdk/lib` 相对路径加载，因此无需安装或下载官方 SDK，整个项目目录也可随意移动。
+`sdk/` 内已包含编译所需头文件和运行时动态库，二进制通过 `$ORIGIN/../sdk/lib` 相对路径加载，因此无需安装或下载官方 SDK，整个项目目录也可随意移动。
 
-> `bin/`、`lib/`、`pyvenv.cfg` 属于本地 Python venv，默认不纳入 git。录制器不依赖 Python，克隆后即可使用；新机器若要运行 `bag_extract.py`，需自行创建 Python 3.11 venv 并安装 `rosbags`、`opencv-python-headless`、`numpy`。
+> `.venv/` 属于本地 Python 环境，默认不纳入 git。录制器不依赖 Python，克隆后即可使用；新机器若要运行 `bag_extract.py`，需自行创建 Python 3.11 venv 并安装 `rosbags`、`opencv-python-headless`、`numpy`。
 >
 > `sdk/lib/libdepthengine.so.2.0` 依赖系统库 `libEGL.so.1`；精简系统若提示缺失，安装 `libegl1` 即可。
 
 ### 1.4 相机访问权限
 
-首次使用若提示 `OB_USB_STATUS_ACCESS`，安装 udev 规则后重新插拔相机：
+首次使用若提示 `OB_USB_STATUS_ACCESS`，在项目根目录安装 udev 规则后重新插拔相机：
 
 ```bash
-cd ~/documents/code/projects/orbbecTool
-sudo ./install_udev_rules.sh
+sudo ./scripts/install_udev_rules.sh
 ```
 
-`99-obsensor-libusb.rules` 已随项目提供，脚本会自动复制到 `/etc/udev/rules.d/`。
+`scripts/99-obsensor-libusb.rules` 已随项目提供，脚本会自动复制到 `/etc/udev/rules.d/`。
 
 ---
 
 ## 2. 快速开始
 
-```bash
-cd ~/documents/code/projects/orbbecTool
+在项目根目录执行：
 
+```bash
 # 1) 查看相机支持的流配置
-./orbbec_recorder --list
+./bin/orbbec_recorder --list
 
 # 2) 录制 10 秒彩色 1080p30
-./orbbec_recorder test.bag 10
+./bin/orbbec_recorder test.bag 10
 
 # 3) 转成 mp4
-./bin/python bag_extract.py test.bag -o test.mp4
+./.venv/bin/python scripts/bag_extract.py test.bag -o test.mp4
 ```
 
 录制前请确认 OrbbecViewer 已关闭，它运行时会独占相机。
@@ -107,10 +108,11 @@ cd ~/documents/code/projects/orbbecTool
 
 ## 3. 查看实时画面
 
-使用官方 OrbbecViewer：
+使用官方 OrbbecViewer（可选，按实际解压位置设置 `VIEWER_DIR`）：
 
 ```bash
-cd ~/documents/机器人队/相机/OrbbecViewer_v1.10.37_202607070725_linux_x64_release
+VIEWER_DIR="${VIEWER_DIR:-../OrbbecViewer_v1.10.37_202607070725_linux_x64_release}"
+cd "$VIEWER_DIR"
 LD_LIBRARY_PATH=. ./OrbbecViewer
 ```
 
@@ -127,9 +129,7 @@ LD_LIBRARY_PATH=. ./OrbbecViewer
 ### 4.1 命令格式
 
 ```bash
-cd ~/documents/code/projects/orbbecTool
-
-./orbbec_recorder [输出.bag] [时长秒] [选项]
+./bin/orbbec_recorder [输出.bag] [时长秒] [选项]
 ```
 
 | 选项 | 说明 | 默认值 |
@@ -148,7 +148,7 @@ cd ~/documents/code/projects/orbbecTool
 | `--ir-gain N` | 红外增益 | 不设置 |
 | `--out-dir DIR` | 输出 bag 目录，不存在时自动创建；相对输出名会拼接到该目录 | 当前目录 |
 | `--log-dir DIR` | SDK 日志目录，不存在时自动创建 | `./Log` |
-| `--config FILE` | SDK 配置文件路径 | 当前目录的 `OrbbecSDKConfig_v1.0.xml` |
+| `--config FILE` | SDK 配置文件路径 | `config/OrbbecSDKConfig_v1.0.xml` |
 | `--props` | 查询各路曝光 / 增益的当前值和范围后退出 | — |
 | `--list` | 列出相机支持的所有流配置后退出 | — |
 | `--help` | 显示帮助 | — |
@@ -159,7 +159,7 @@ cd ~/documents/code/projects/orbbecTool
 - 像素格式由程序自动选择：彩色优先 MJPG，深度 / 红外优先 Y16 / Y11，无需手动指定。
 - 请求了相机不支持的配置时，程序会报错并列出该路可用配置。
 - 录制中随时 **Ctrl+C** 停止，文件会正常保存；终端每秒打印各路帧数和实测帧率。
-- 默认从当前工作目录读取 `OrbbecSDKConfig_v1.0.xml`；用 `--config` 可指定任意配置文件。
+- 默认自动查找程序目录上一级的 `config/OrbbecSDKConfig_v1.0.xml`；用 `--config` 可指定任意配置文件。
 - `--out-dir`、`--log-dir` 会递归创建；如果第 1 个位置参数是绝对路径，则不受 `--out-dir` 影响。
 - `--list` / `--props` 同样支持 `--config` 和 `--log-dir`，且这两个选项可以写在命令任意位置。
 
@@ -167,37 +167,37 @@ cd ~/documents/code/projects/orbbecTool
 
 ```bash
 # 只录彩色 1080p30（默认）
-./orbbec_recorder my_record.bag 120
+./bin/orbbec_recorder my_record.bag 120
 
 # 彩色 + 深度
-./orbbec_recorder rgbd.bag 120 --streams color,depth
+./bin/orbbec_recorder rgbd.bag 120 --streams color,depth
 
 # 彩色 720p + 深度 1280x800@15
-./orbbec_recorder hd.bag 60 --color 1280x720x30 --depth 1280x800x15
+./bin/orbbec_recorder hd.bag 60 --color 1280x720x30 --depth 1280x800x15
 
 # 只录深度
-./orbbec_recorder depth.bag 60 --streams depth
+./bin/orbbec_recorder depth.bag 60 --streams depth
 
 # 只录红外
-./orbbec_recorder ir.bag 60 --streams ir
+./bin/orbbec_recorder ir.bag 60 --streams ir
 
 # 三流同录
-./orbbec_recorder all.bag 60 --streams color,depth,ir
+./bin/orbbec_recorder all.bag 60 --streams color,depth,ir
 
 # 低分辨率高帧率（彩色 60fps）
-./orbbec_recorder fast.bag 30 --color 640x480x60
+./bin/orbbec_recorder fast.bag 30 --color 640x480x60
 
 # 固定曝光录制
-./orbbec_recorder fixed.bag 60 --color-exposure 100
+./bin/orbbec_recorder fixed.bag 60 --color-exposure 100
 
 # 分别指定输出目录、日志目录和 SDK 配置文件
-./orbbec_recorder run.bag 60 --out-dir ~/camera_records --log-dir ~/camera_logs --config ./OrbbecSDKConfig_v1.0.xml
+./bin/orbbec_recorder run.bag 60 --out-dir ./camera_records --log-dir ./camera_logs --config ./config/OrbbecSDKConfig_v1.0.xml
 
 # 不指定文件名时按时间戳命名，并写入指定目录
-./orbbec_recorder --out-dir ~/camera_records --log-dir ~/camera_logs
+./bin/orbbec_recorder --out-dir ./camera_records --log-dir ./camera_logs
 
 # 查看可用配置（同样支持自定义目录）
-./orbbec_recorder --list
+./bin/orbbec_recorder --list
 ```
 
 ### 4.3 输出文件
@@ -236,7 +236,7 @@ USB 2.0 实测，随画面内容浮动：
 先查询当前值和可设范围：
 
 ```bash
-./orbbec_recorder --props
+./bin/orbbec_recorder --props
 ```
 
 本机实测输出：
@@ -272,18 +272,18 @@ USB 2.0 实测，随画面内容浮动：
 
 ```bash
 # 固定彩色曝光 10ms（光照稳定场景，避免自动曝光抖动）
-./orbbec_recorder fixed.bag 60 --color-exposure 100
+./bin/orbbec_recorder fixed.bag 60 --color-exposure 100
 
 # 暗光：彩色曝光 100ms + 增益 50（帧率会明显下降）
-./orbbec_recorder dark.bag 30 --color-exposure 1000 --color-gain 50 --color 640x480x30
+./bin/orbbec_recorder dark.bag 30 --color-exposure 1000 --color-gain 50 --color 640x480x30
 
 # 固定深度曝光 5000 + 增益 3000
-./orbbec_recorder depth_fixed.bag 60 --streams depth --depth-exposure 5000 --depth-gain 3000
+./bin/orbbec_recorder depth_fixed.bag 60 --streams depth --depth-exposure 5000 --depth-gain 3000
 ```
 
 ### 4.6 相机支持的流配置
 
-可随时运行 `./orbbec_recorder --list` 查看。以下帧率为 **USB 2.0 实测值**，会随画面内容和负载浮动。
+可随时运行 `./bin/orbbec_recorder --list` 查看。以下帧率为 **USB 2.0 实测值**，会随画面内容和负载浮动。
 
 #### 彩色流（color）
 
@@ -322,43 +322,45 @@ USB 2.0 实测，随画面内容浮动：
 
 | 场景 | 命令 |
 | --- | --- |
-| 只要高清彩色 | `./orbbec_recorder out.bag 60` |
-| RGB+D 标准 | `./orbbec_recorder out.bag 60 --streams color,depth` |
-| RGB+D 带宽吃紧 | `./orbbec_recorder out.bag 60 --color 1280x720x30 --depth 640x400x30` |
-| 高帧率彩色 | `./orbbec_recorder out.bag 30 --color 640x480x60` |
-| 只要深度 | `./orbbec_recorder out.bag 60 --streams depth` |
-| 只要红外 | `./orbbec_recorder out.bag 60 --streams ir` |
-| 三流全录 | `./orbbec_recorder out.bag 60 --streams color,depth,ir`（各约 25fps） |
+| 只要高清彩色 | `./bin/orbbec_recorder out.bag 60` |
+| RGB+D 标准 | `./bin/orbbec_recorder out.bag 60 --streams color,depth` |
+| RGB+D 带宽吃紧 | `./bin/orbbec_recorder out.bag 60 --color 1280x720x30 --depth 640x400x30` |
+| 高帧率彩色 | `./bin/orbbec_recorder out.bag 30 --color 640x480x60` |
+| 只要深度 | `./bin/orbbec_recorder out.bag 60 --streams depth` |
+| 只要红外 | `./bin/orbbec_recorder out.bag 60 --streams ir` |
+| 三流全录 | `./bin/orbbec_recorder out.bag 60 --streams color,depth,ir`（各约 25fps） |
 
 ### 4.7 定时 / 自动录制
 
-cron 示例：每小时整点录制 10 分钟到 `~/camera_records/`。
+cron 示例：每小时整点录制 10 分钟到 `./camera_records/`。cron 不继承当前目录，先按实际位置设置 `PROJECT_DIR`：
 
 ```cron
-0 * * * * mkdir -p ~/camera_records && cd ~/documents/code/projects/orbbecTool && pkill -x OrbbecViewer 2>/dev/null; ./orbbec_recorder "$HOME/camera_records/rec_$(date +\%Y\%m\%d_\%H\%M).bag" 600 >> /tmp/orbbec_cron.log 2>&1
+PROJECT_DIR=$HOME/documents/code/projects/orbbecTool
+
+0 * * * * cd "$PROJECT_DIR" && mkdir -p ./camera_records ./Log && pkill -x OrbbecViewer 2>/dev/null; ./bin/orbbec_recorder "./camera_records/rec_$(date +\%Y\%m\%d_\%H\%M).bag" 600 >> Log/cron.log 2>&1
 ```
 
 其他常用 schedule：
 
 ```cron
 # 每天早上 8 点录 1 小时 RGB+D
-0 8 * * * cd ~/documents/code/projects/orbbecTool && ./orbbec_recorder "$HOME/camera_records/rec_$(date +\%Y\%m\%d_\%H\%M).bag" 3600 --streams color,depth
+0 8 * * * cd "$PROJECT_DIR" && ./bin/orbbec_recorder "./camera_records/rec_$(date +\%Y\%m\%d_\%H\%M).bag" 3600 --streams color,depth
 
 # 开机后延迟 30 秒开始录 2 小时
-@reboot sleep 30 && cd ~/documents/code/projects/orbbecTool && ./orbbec_recorder "$HOME/camera_records/boot_$(date +\%Y\%m\%d_\%H\%M).bag" 7200
+@reboot sleep 30 && cd "$PROJECT_DIR" && ./bin/orbbec_recorder "./camera_records/boot_$(date +\%Y\%m\%d_\%H\%M).bag" 7200
 ```
 
 注意事项：
 
 - crontab 中的 `%` 必须转义为 `\%`。
 - 录制前确保 OrbbecViewer 已关闭，上面的示例已内置 `pkill`。
-- 建议先手动运行 `./orbbec_recorder test.bag 10` 验证，再配置定时任务。
+- 建议先手动运行 `./bin/orbbec_recorder test.bag 10` 验证，再配置定时任务。
 
 需要“持续录制、每 N 分钟一个文件”时，可用 shell 循环：
 
 ```bash
 while true; do
-  ./orbbec_recorder "seg_$(date +%Y%m%d_%H%M%S).bag" 600 --streams color,depth
+  ./bin/orbbec_recorder "seg_$(date +%Y%m%d_%H%M%S).bag" 600 --streams color,depth
 done
 ```
 
@@ -366,14 +368,12 @@ done
 
 ## 5. 解析与转换
 
-`bag_extract.py` 使用 venv 中的 rosbags 读取 bag，输出 mp4 或 JPEG 序列。
+`scripts/bag_extract.py` 使用 `.venv` 中的 rosbags 读取 bag，输出 mp4 或 JPEG 序列。
 
 ### 5.1 bag 转 mp4
 
 ```bash
-cd ~/documents/code/projects/orbbecTool
-
-./bin/python bag_extract.py out.bag -o out.mp4
+./.venv/bin/python scripts/bag_extract.py out.bag -o out.mp4
 ```
 
 默认按录制实测帧率取整写入（例如实测 30.1 fps → 按 30 fps），可用 `ffprobe out.mp4` 验证。
@@ -382,10 +382,10 @@ cd ~/documents/code/projects/orbbecTool
 
 ```bash
 # 每秒保存 30 张 JPEG 到 frames/
-./bin/python bag_extract.py out.bag --frames 30 -o frames/
+./.venv/bin/python scripts/bag_extract.py out.bag --frames 30 -o frames/
 
 # 每秒 1 张做缩略图
-./bin/python bag_extract.py out.bag --frames 1 -o thumbs/
+./.venv/bin/python scripts/bag_extract.py out.bag --frames 1 -o thumbs/
 ```
 
 文件名带时间戳，例如 `f_000000_1792396277.102.jpg`。
@@ -403,12 +403,12 @@ cd ~/documents/code/projects/orbbecTool
 示例：导出深度流
 
 ```bash
-./bin/python bag_extract.py out.bag --topic /cam0/depth_raw -o depth.mp4
+./.venv/bin/python scripts/bag_extract.py out.bag --topic /cam0/depth_raw -o depth.mp4
 ```
 
 ### 5.4 在自己的 Python 代码中读取
 
-venv 中已装好 `rosbags`。Orbbec 的消息封装头非标准，读取时需跳过开头 4 字节：
+`.venv` 中已装好 `rosbags`。Orbbec 的消息封装头非标准，读取时需跳过开头 4 字节：
 
 ```python
 from rosbags.rosbag1 import Reader

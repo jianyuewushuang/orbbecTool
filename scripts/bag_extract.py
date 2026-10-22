@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Orbbec 录制文件 (.bag, 标准 ROSBAG V2.0) 解析工具
 
-用法:
+用法 (在项目根目录执行):
   # 转成 mp4 视频
-  ./bin/python bag_extract.py sample_rgbd.bag -o out.mp4
+  ./.venv/bin/python scripts/bag_extract.py out.bag -o out.mp4
 
   # 每秒抽 N 帧存 JPEG (即"每秒拍N张照片")
-  ./bin/python bag_extract.py sample_rgbd.bag --frames 30 -o frames/
+  ./.venv/bin/python scripts/bag_extract.py out.bag --frames 30 -o frames/
 
   # 指定 topic (默认自动找彩色流 /cam0/color_raw)
-  ./bin/python bag_extract.py x.bag --topic /cam0/depth_raw -o depth.mp4
+  ./.venv/bin/python scripts/bag_extract.py out.bag --topic /cam0/depth_raw -o depth.mp4
 
-依赖: 本目录 venv (rosbags + opencv + numpy)
+依赖: 项目根目录 .venv (rosbags + opencv + numpy)
 """
 
 import argparse

@@ -2,7 +2,7 @@
 // 可自由选择录制的流类型 (彩色/深度/红外) 及每路流的分辨率、帧率、曝光
 //
 // 用法:
-//   ./orbbec_recorder [输出.bag] [时长秒] [选项]
+//   ./bin/orbbec_recorder [输出.bag] [时长秒] [选项]
 //
 // 流选择:
 //   --streams color,depth,ir   选择要录制的流 (默认: color)
@@ -13,7 +13,7 @@
 // 目录/配置 (均可独立指定):
 //   --out-dir DIR              输出 bag 的目录 (默认: 当前目录)
 //   --log-dir DIR              SDK 日志目录 (默认: ./Log)
-//   --config FILE              SDK 配置文件路径 (默认: ./OrbbecSDKConfig_v1.0.xml)
+//   --config FILE              SDK 配置文件路径 (默认: <程序目录>/../config/OrbbecSDKConfig_v1.0.xml)
 //
 // 曝光控制 (快门速度, 设置后自动关闭对应自动曝光):
 //   --color-exposure 1000      彩色曝光值
@@ -26,11 +26,11 @@
 //   --list                     列出相机支持的所有流配置后退出
 //
 // 示例:
-//   ./orbbec_recorder                                  # 彩色 1080p30, 60秒
-//   ./orbbec_recorder out.bag 120 --streams color,depth
-//   ./orbbec_recorder out.bag 60 --color-exposure 2000 --color-gain 16
-//   ./orbbec_recorder out.bag 60 --depth-exposure 5000
-//   ./orbbec_recorder --props                          # 先看曝光范围
+//   ./bin/orbbec_recorder                                  # 彩色 1080p30, 60秒
+//   ./bin/orbbec_recorder out.bag 120 --streams color,depth
+//   ./bin/orbbec_recorder out.bag 60 --color-exposure 2000 --color-gain 16
+//   ./bin/orbbec_recorder out.bag 60 --depth-exposure 5000
+//   ./bin/orbbec_recorder --props                          # 先看曝光范围
 //
 // 录制的 .bag 为标准 ROSBAG V2.0, 可用 OrbbecViewer (File->Open) 回放
 // Ctrl+C 可随时停止, 文件会正常保存
@@ -54,6 +54,7 @@
 #include <vector>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 static volatile sig_atomic_t g_running = 1;
 static void onSignal(int) { g_running = 0; }
@@ -79,6 +80,17 @@ static std::string expandHome(const std::string &path) {
 static bool isDir(const std::string &path) {
     struct stat st;
     return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+// 可执行文件所在目录, 用于定位项目内置的 config/
+static std::string executableDir() {
+    char buf[4096];
+    ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if(n <= 0) return "";
+    buf[n] = '\0';
+    std::string path(buf);
+    size_t pos = path.rfind('/');
+    return pos == std::string::npos ? "" : path.substr(0, pos);
 }
 
 // 递归创建目录, 等价于 mkdir -p
@@ -310,18 +322,18 @@ static bool parseWHF(const char *s, int &w, int &h, int &fps) {
 
 static void usage() {
     printf(
-        "用法: ./orbbec_recorder [输出.bag] [时长秒] [选项]\n"
+        "用法: ./bin/orbbec_recorder [输出.bag] [时长秒] [选项]\n"
         "  --streams color,depth,ir   选择录制的流 (默认 color)\n"
         "  --color/--depth/--ir WxHxFPS   各路流的分辨率和帧率 (如 1920x1080x30)\n"
         "  --color-exposure/--depth-exposure/--ir-exposure N   曝光 (自动关自动曝光)\n"
         "  --color-gain/--depth-gain/--ir-gain N               增益\n"
         "  --out-dir DIR             输出 bag 目录 (默认当前目录, 自动创建)\n"
         "  --log-dir DIR             SDK 日志目录 (默认 ./Log, 自动创建)\n"
-        "  --config FILE             SDK 配置文件路径 (默认 ./OrbbecSDKConfig_v1.0.xml)\n"
+        "  --config FILE             SDK 配置文件路径 (默认 ../config/OrbbecSDKConfig_v1.0.xml)\n"
         "  --props   查询各路曝光/增益当前值和范围\n"
         "  --list    列出所有流配置\n"
-        "示例: ./orbbec_recorder out.bag 60 --streams color,depth --depth-exposure 5000\n"
-        "      ./orbbec_recorder out.bag 60 --out-dir ~/records --log-dir ~/logs\n");
+        "示例: ./bin/orbbec_recorder out.bag 60 --streams color,depth --depth-exposure 5000\n"
+        "      ./bin/orbbec_recorder out.bag 60 --out-dir ./records --log-dir ./logs\n");
 }
 
 int main(int argc, char **argv) {
@@ -455,6 +467,16 @@ int main(int argc, char **argv) {
     outDir     = expandHome(outDir);
     logDir     = expandHome(logDir);
     configPath = expandHome(configPath);
+
+    // 未显式指定 --config 时, 优先使用程序同级的 config/OrbbecSDKConfig_v1.0.xml
+    if(configPath.empty()) {
+        std::string dir = executableDir();
+        if(!dir.empty()) {
+            std::string candidate = dir + "/../config/OrbbecSDKConfig_v1.0.xml";
+            struct stat st;
+            if(stat(candidate.c_str(), &st) == 0 && S_ISREG(st.st_mode)) configPath = candidate;
+        }
+    }
 
     if(!logDir.empty() && !makeDirs(logDir)) {
         fprintf(stderr, "[错误] 无法创建日志目录 '%s'\n", logDir.c_str());

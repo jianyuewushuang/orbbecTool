@@ -20,6 +20,5 @@ __pycache__/
 /frames/
 /thumbs/
 
-# ---- 编译产物（由 orbbec_recorder.cpp 重新编译生成） ----
-/orbbec_recorder
+# ---- 编译中间文件（预编译的 orbbec_recorder 随仓库分发） ----
 *.o

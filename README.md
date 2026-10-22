@@ -2,6 +2,8 @@
 
 基于 Orbbec 官方 SDK v1.10.37 的无界面相机录制工具，配套 bag 解析脚本。支持自由选择彩色 / 深度 / 红外流及其分辨率、帧率和曝光，录制为标准 ROSBAG V2.0；录制结果可转换为 mp4 或按秒抽取 JPEG。
 
+项目已内置 SDK 头文件与运行库（`sdk/`），克隆后无需另行下载官方 SDK 即可使用。
+
 相机型号：Orbbec Gemini Max（SV1301S_U3，SN: AY2R76300H4）。硬件支持 USB 3.0，建议使用 USB 3.0 线缆和端口以避免带宽不足。
 
 ## 目录
@@ -27,8 +29,8 @@
 | 用途 | 路径 |
 | --- | --- |
 | 项目目录 | `~/documents/code/projects/orbbecTool` |
-| Orbbec SDK | `~/documents/机器人队/相机/sdk/OrbbecSDK_v1.10.37/SDK` |
-| OrbbecViewer | `~/documents/机器人队/相机/OrbbecViewer_v1.10.37_202607070725_linux_x64_release` |
+| Orbbec SDK（项目内置） | `./sdk`（头文件 + 运行库） |
+| OrbbecViewer（可选） | `~/documents/机器人队/相机/OrbbecViewer_v1.10.37_202607070725_linux_x64_release` |
 
 ### 1.2 测试环境
 
@@ -38,7 +40,7 @@
 | 相机 | Orbbec Gemini Max（SV1301S_U3，SN: AY2R76300H4） |
 | USB 连接 | 测试时为 **USB 2.0（480Mbps）**，Bus 003 |
 | udev 规则 | 已安装 `/etc/udev/rules.d/99-obsensor-libusb.rules` |
-| SDK | OrbbecSDK v1.10.37 |
+| SDK | OrbbecSDK v1.10.37（项目内置） |
 | 查看 / 回放 | OrbbecViewer v1.10.37 |
 | 解析环境 | Python 3.11 venv（rosbags + OpenCV + NumPy） |
 
@@ -50,22 +52,35 @@ orbbecTool/
 ├── lib/                          venv 依赖（rosbags、opencv-python-headless、numpy、apsw 等）
 ├── lib64 -> lib                  venv 标准软链接
 ├── pyvenv.cfg                    venv 配置（uv 管理的 CPython 3.11）
+├── sdk/                          Orbbec SDK v1.10.37（项目内置）
+│   ├── include/libobsensor/      头文件
+│   ├── lib/                      动态库（libOrbbecSDK、libob_usb、liblive555 等）
+│   └── LICENSE.txt               SDK 许可证
 ├── Log/                          OrbbecSDK 运行日志（自动生成，可删除）
 ├── OrbbecSDKConfig_v1.0.xml      SDK 全局配置（运行必需）
-├── orbbec_recorder               已编译的录制器
+├── orbbec_recorder               已编译的录制器（使用相对 RUNPATH）
 ├── orbbec_recorder.cpp           录制器源码
 ├── bag_extract.py                bag 解析 / 转 mp4 / 抽帧脚本
+├── install_udev_rules.sh         安装相机 udev 规则（需 sudo）
+├── 99-obsensor-libusb.rules      udev 规则本体
 ├── LICENSE.md                    PolyForm Noncommercial 1.0.0
 └── README.md                     本文档
 ```
+
+`sdk/` 内已包含编译所需头文件和运行时动态库，二进制通过 `$ORIGIN/sdk/lib` 相对路径加载，因此无需安装或下载官方 SDK，整个项目目录也可随意移动。
+
+> `bin/`、`lib/`、`pyvenv.cfg` 属于本地 Python venv，默认不纳入 git。录制器不依赖 Python，克隆后即可使用；新机器若要运行 `bag_extract.py`，需自行创建 Python 3.11 venv 并安装 `rosbags`、`opencv-python-headless`、`numpy`。
 
 ### 1.4 相机访问权限
 
 首次使用若提示 `OB_USB_STATUS_ACCESS`，安装 udev 规则后重新插拔相机：
 
 ```bash
-sudo ~/documents/机器人队/相机/OrbbecViewer_v1.10.37_202607070725_linux_x64_release/script/install_udev_rules.sh
+cd ~/documents/code/projects/orbbecTool
+sudo ./install_udev_rules.sh
 ```
+
+`99-obsensor-libusb.rules` 已随项目提供，脚本会自动复制到 `/etc/udev/rules.d/`。
 
 ---
 
@@ -437,15 +452,17 @@ LD_LIBRARY_PATH=. ./OrbbecViewer
 
 ```bash
 cd ~/documents/code/projects/orbbecTool
-SDK=~/documents/机器人队/相机/sdk/OrbbecSDK_v1.10.37/SDK
+SDK=./sdk
 
 g++ -std=c++11 -O2 orbbec_recorder.cpp \
     -I "$SDK/include" -L "$SDK/lib" -lOrbbecSDK -lpthread \
-    -o orbbec_recorder -Wl,-rpath,"$SDK/lib"
+    -o orbbec_recorder -Wl,-rpath,'$ORIGIN/sdk/lib'
 ```
 
-- 如果 SDK 不在上述路径，修改 `SDK` 变量即可；`-Wl,-rpath` 必须指向实际 SDK 库目录。
-- 预编译二进制的 RUNPATH 已写死为 `~/documents/机器人队/相机/sdk/OrbbecSDK_v1.10.37/SDK/lib`。SDK 位置变化且不重编时，可临时指定 `LD_LIBRARY_PATH="$SDK/lib"`。
+- SDK 头文件和动态库已内置在 `./sdk`，无需另行下载。
+- `$ORIGIN` 必须放在单引号中，确保写入的是相对路径；这样整个项目目录可以任意移动或被克隆到其他机器。
+- 预编译的 `orbbec_recorder` 已使用 `$ORIGIN/sdk/lib`，克隆后可直接运行。
+- 如替换 SDK 版本，保持 `sdk/include/libobsensor/` 和 `sdk/lib/` 目录结构即可。
 
 ### 7.2 关键 API
 
@@ -465,7 +482,7 @@ pipe.stopRecord();
 pipe.stop();
 ```
 
-曝光 / 增益控制（属性 ID 见 `SDK/include/libobsensor/h/Property.h`）：
+曝光 / 增益控制（属性 ID 见 `sdk/include/libobsensor/h/Property.h`）：
 
 ```cpp
 auto dev = pipe.getDevice();
@@ -504,3 +521,7 @@ dev->setIntProperty(OB_PROP_COLOR_GAIN_INT, 16);
 - 如需商业授权，请联系：<jianyuewushuang@163.com>。
 
 完整条款见 [LICENSE.md](./LICENSE.md)。
+
+### 第三方组件
+
+`sdk/` 中的 Orbbec SDK v1.10.37 头文件与动态库按 Orbbec 随附的许可证分发，详见 [sdk/LICENSE.txt](./sdk/LICENSE.txt)。
